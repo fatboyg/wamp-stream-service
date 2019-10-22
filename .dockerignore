@@ -1,0 +1,7 @@
+/.git
+/.idea
+/storage/framework/cache/*
+/.env
+/composer.lock
+Dockerfile
+!.dockerignore

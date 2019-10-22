@@ -1,0 +1,5 @@
+{
+  "type" : "streamNotification",
+  "message" : "This is a message string for all connected sessions in all domains. null denotes this",
+  "domain" : null
+}

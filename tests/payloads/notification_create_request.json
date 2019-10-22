@@ -1,0 +1,5 @@
+{
+  "type" : "streamNotification",
+  "message" : "This is a message string. For custom session Identifiers",
+  "ids" : ["sessionId1", "sessionId2"]
+}
