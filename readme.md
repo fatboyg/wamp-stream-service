@@ -51,3 +51,6 @@ Autobahn js lib is also in the repository for web integrations
 **NOTE:**
 This code was migrated from an old symfony app, and has not been thoroughly tested,
  so expect bugs.
+### TODO:
+ - fix the entrypoints so the right signal is caught (SIGWINCH from apache2)
+ - scale out the router component
