@@ -10,7 +10,6 @@ use Thruway\Logging\Logger;
 class AccountSessions extends \Thruway\Peer\Client
 {
 
-    const topic =  'com.robits.notifications';
     protected static $_sessions = [];
     public static $_sessionCount = 0;
     public static $_peakSessionsCount = 0;

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\V1;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessBroadcastMessage;
+use App\Jobs\ProcessSessionMessage;
 use App\Libraries\InternalWampClient\Client;
 use App\Libraries\InternalWampClient\ClientNotificationMessage;
 use Illuminate\Http\Request;
@@ -37,7 +38,7 @@ class NotificationController extends Controller
         $message = new ClientNotificationMessage($type, $request->get('message'));
 
 
-        $job = $this->dispatch(new ProcessBroadcastMessage($message, $seesionIds));
+        $job = $this->dispatch(new ProcessSessionMessage($message, $seesionIds));
 
         return new Response(['job' => $job]);
 

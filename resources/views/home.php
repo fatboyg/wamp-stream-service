@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 	<meta charset="utf-8">
-	<title>iStream Live Radio</title>
+	<title>iStream</title>
 
 	<style type="text/css">
 
@@ -32,20 +32,10 @@
 		padding: 14px 15px 10px 15px;
 	}
 
-	code {
-		font-family: Consolas, Monaco, Courier New, Courier, monospace;
-		font-size: 12px;
-		background-color: #f9f9f9;
-		border: 1px solid #D0D0D0;
-		color: #002166;
-		display: block;
-		margin: 14px 0 14px 0;
-		padding: 12px 10px 12px 10px;
-	}
-
 	#body {
 		margin: 0 15px 0 15px;
 	}
+
 
 	p.footer {
 		text-align: right;
@@ -56,8 +46,10 @@
 		margin: 20px 0 0 0;
 	}
 
-	.playerInfo {
-		width: 60%;
+	.artContainer {
+		width: 36%;
+        border: 1px solid #D0D0D0;
+        box-shadow: 0 0 8px #D0D0D0;
 	}
 
 	#container {
@@ -80,52 +72,29 @@
 	<div id="body">
 
 		<div class="playerContainer" style="float:left;">
-		<!-- BEGINS: AUTO-GENERATED MUSES RADIO PLAYER CODE -->
-		<script src="https://hosted.muses.org/mrp.js" type="text/javascript"></script>
-		<script type="text/javascript">// <![CDATA[
-			MRP.insert({
-				'url': 'https://ice-stream.robits.org/live.aac',
-				'codec':'mp3',
-				'volume':100,
-				'autoplay':true,
-				'forceHTML5':true,
-				'jsevents':true,
-				'buffering':5,
-				'title':'iRadio Live',
-				'welcome':'More alternative?',
-				'wmode':'transparent',
-				'skin':'mcclean',
-				'width':180,
-				'height':60
-			});
-			// ]]></script>
-		<!-- ENDS: AUTO-GENERATED MUSES RADIO PLAYER CODE -->
-
-		<h3><a href=https://ice-stream.robits.org/live.aac.m3u')">Play Live Stream AAC 128Kbps</a></h3>
-
-		<h3><a href="<?php echo url('assets/app/iradio-app.apk'); ?>">Download Android App</a></h3>
-
-
+            <div >
+                <img class="artContainer" src="<?php echo URL::to("/assets/not-connected.png"); ?>"/>
+            </div>
 		</div>
 
-		<div class="playerInfo">
-			<div class="artContainer">
-				<img src="/art/not-playing.jpg" id="trackArt"/>
-			</div>
+		<div class="playerInfo" style="float:right;">
+
+
 			<div class="">
-				<span class="title">Jigel Artistu</span>
-				<span class="subtitle">Melodia lu gigelu</span>
+				<span class="title">Title</span>
+				<span class="subtitle">Subtitle</span>
 			</div>
 		</div>
 
+        <div style="clear: both"></div>
 	</div>
 
-	<p class="footer">Page rendered in <strong>{elapsed_time}</strong> seconds.</p>
-<script>
-	var wsUrl = '<?php echo url('/ws', [], true); ?>';
-	appinstance = new myApp();
-	appinstance.init();
-</script>
+    <script>
+        var wsUrl = '<?php
+            $url = app('url'); $url->forceScheme('ws');
+            echo $url->to('/ws'); ?>';
+        var appinstance = new myApp();
+    </script>
 </div>
 
 </body>

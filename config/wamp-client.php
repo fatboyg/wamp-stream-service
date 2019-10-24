@@ -6,5 +6,5 @@ return [
     'internal_realm' =>  env('INTERNAL_DOMAIN', 'randomPass'), //admin/secret domain
     "internal_realm_password" => env('INTERNAL_DOMAIN_PASSWORD', 'letMeIn'),
     'frontend_realm' => env('PUBLIC_DOMAIN', 'web'),
-    'notifications_topic' => env('PUBLIC_DOMAIN_TOPIC', 'com.robits.notifications')
+    'notifications_topic' => env('PUBLIC_DOMAIN_TOPIC', 'org.robits.notifications')
 ];

@@ -25,7 +25,8 @@ class DummyAuthenticator  extends TokenAuthenticator
        return [
             "SUCCESS",
             ["authid" => $code == 'test' ? '00000000' : rand(1000000,10000000),
-            "authroles" => 'frontend']
+            "authroles" => 'frontend'
+            ]
         ];
 
 

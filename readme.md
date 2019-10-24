@@ -17,10 +17,11 @@ Endpoints
        /v1/notifications/createBroadcast - sends a message to all connected sessions
     The api requires basic authentication (user:pass@domain). See: `Http/Middleware/AuthenticateOnceWithBasicAuth.php`
  - **websocket**: where public websocket clients connect
-    You must implement authentication on the router. The default authenticator is 
-    (dummy) allows everyone to connect.
 
-       /ws - reverse proxy to wamp-router using apache
+       /ws - reverse proxy to wamp-router 
+    You must implement authentication on the router. The default authenticator is 
+    (dummy) allows everyone to connect.   
+ - **public root** : / Test page with JS client connecting to the websocket endpoint
 ### Queue Worker
 The queue worker connects to the router in order to send wamp messages. So the router must 
 be started before the queue worker. 

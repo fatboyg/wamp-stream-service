@@ -22,7 +22,7 @@ $config['server'] = [
     'port' => env('WAMP_PORT', 9901), // listen port
     'auth' => env('WAMP_USE_AUTH', true), //enable api authentication mechanism
     'front_end_realm' =>  env('PUBLIC_DOMAIN', 'web'), //frontend domain where to broadcast messages
-    'main_topic' => env('PUBLIC_DOMAIN_TOPIC', 'com.robits.notifications'), // main topic on the frontend domain where to push messages
+    'main_topic' => env('PUBLIC_DOMAIN_TOPIC', 'org.robits.notifications'), // main topic on the frontend domain where to push messages
   //  'max_connections' => 2,   // how many sessions to handle
 ];
 
