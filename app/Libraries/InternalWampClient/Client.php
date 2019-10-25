@@ -3,9 +3,13 @@
 namespace App\Libraries\InternalWampClient;
 
 
+use Exception;
+use React\Dns\Config\Config;
+use React\Dns\Model\Message;
+use React\EventLoop\Factory;
 use Thruway\CallResult;
 use Thruway\ClientSession;
-use Thruway\Connection;
+use App\Libraries\InternalWampClient\Connection;
 use React\Promise\Timer\TimeoutException;
 use Thruway\Logging\Logger;
 use Thruway\Message\ErrorMessage;
@@ -21,6 +25,11 @@ class Client
 
     protected $connection;
 
+    protected $connections = [];
+    protected $connectionPromises = [];
+    protected $connectedSessions = [];
+
+
     protected $result;
 
     protected $callMethod;
@@ -28,19 +37,99 @@ class Client
     protected static $session;
     protected $inProgress  = false;
 
+    protected static $eventLoop;
+    /**
+     * @var array
+     */
+    private $results;
+    /**
+     * @var array
+     */
+    private $subtopics;
+    /**
+     * @var \React\Promise\Promise
+     */
+    private $connectionsPromise;
+
     public function __construct(Array $config)
     {
         $this->config = $config;
+        if(is_null(self::$eventLoop))
+        {
+            self::$eventLoop = Factory::create();
+        }
     }
 
-    public function connection() : Connection
+    public function getEventLoop() {
+        return self::$eventLoop;
+    }
+
+    public function connections() : \React\Promise\Promise
     {
-        if(is_null($this->connection))
+
+        if($this->connectionsPromise)
         {
-            $this->connection = $this->getConnection($this->config['internal_realm']);
+            return $this->connectionsPromise;
         }
 
-        return $this->connection;
+       if(empty($this->connections))
+       {
+           $routerUrl = parse_url($this->config['dsn']);
+
+           $this->getHostIps($routerUrl['host'])
+           ->then(function ($hostIps) use ($routerUrl) {
+
+               var_dump('got host ips', $hostIps);
+
+               foreach ($hostIps as $id => $hostIp)
+               {
+                   $hostUrl =$routerUrl['scheme'].'://' . $hostIp . ":" . $routerUrl['port'].'/'.$routerUrl['path'];
+                   $conn = $this->getConnection($hostUrl, $this->config['internal_realm']);
+
+
+                   $conn->on('open', function (ClientSession $session) use($id) {
+
+                       $this->connectedSessions[$id] = $session;
+                   });
+                   $conn->on('close', function () use($id, $hostUrl) {
+
+                       Logger::error($this, 'Got connection error', ['host' => $hostUrl]);
+
+                       //    self::$eventLoop->stop();
+
+                   });
+
+                   $conn->on('error', function ()  use($id, $hostUrl) {
+                       Logger::error($this, 'Got connection error', ['host' => $hostUrl]);
+                       //    self::$eventLoop->stop();
+                   });
+
+                   $conn->open(false);
+
+                   array_push($this->connectionPromises, $conn->getRegisteredPromise());
+
+
+                   $this->connections[$id] = $conn;
+
+               }
+           });
+
+
+       }
+
+        $this->connectionsPromise = \React\Promise\all($this->connectionPromises);
+        return $this->connectionsPromise;
+    }
+
+    public function connection($id) : ?Connection
+    {
+
+         if(isset($this->connections[$id]))
+        {
+            return $this->connection[$id];
+        }
+
+         return null;
     }
 
 
@@ -49,10 +138,10 @@ class Client
         return self::$session;
     }
 
-    protected function getConnection($realm) : Connection
+    protected function getConnection($dsn, $realm) : Connection
     {
 
-        $conn = new Connection(['realm' => $realm, 'url' => $this->config['dsn']]);
+        $conn = new Connection(['realm' => $realm, 'url' => $dsn], self::$eventLoop);
 
         $client = $conn->getClient();
         $client->setAttemptRetry(false);
@@ -61,29 +150,11 @@ class Client
         $loop = $client->getLoop();
 
 
-        $loop ->addTimer($this->config['timeout'], function () use ( $conn, $loop) {
+        $loop ->addTimer($this->config['timeout'], function () use ( $conn, $loop, $dsn) {
            if(!$this->connected) {
                $loop->stop();
-               throw new TimeoutException($this->config['timeout'], 'Timeout or auth failure while connecting to ' . $this->config['dsn']);
+               throw new TimeoutException($this->config['timeout'], 'Timeout or auth failure while connecting to ' . $dsn);
            }
-
-        });
-
-
-        $conn->on('open', function (ClientSession $session)  {
-
-            self::$session = $session;
-            $this->connected = true;
-        });
-        $conn->on('close', function () use (  $loop) {
-            $loop->stop();
-            $this->connected = false;
-
-        });
-
-        $conn->on('error', function () use (  $loop) {
-            $loop->stop();
-            $this->connected = false;
 
         });
 
@@ -102,60 +173,81 @@ class Client
         return $this->inProgress;
     }
 
+    public function getHostIps($hostname) : \React\Promise\Promise
+    {
+        if(filter_var($hostname, FILTER_VALIDATE_IP))
+        {
+            $deferred = new \React\Promise\Deferred();
+            // since the host is an ip already resolve the promise
+            $deferred->resolve([$hostname]);
+
+            return $deferred->promise();
+        }
+
+        $config = Config::loadSystemConfigBlocking();
+        $server = reset($config->nameservers);
+
+        $factory = new \React\Dns\Resolver\Factory();
+        $resolver = $factory->create($server, self::getEventLoop());
+
+        return $resolver->resolveAll($hostname, Message::TYPE_A);
+
+    }
+
     public function notifyAll($messages, $subtopics = [null]) : bool
     {
 
-        $subtopics = !is_array($subtopics) ? [$subtopics] : array_unique($subtopics);
+        $this->subtopics = !is_array($subtopics) ? [$subtopics] : array_unique($subtopics);
 
         !is_array($messages) && $messages = [$messages];
 
         $this->callMethod = $this->config['notifications_topic'] . '.notifyAll';
 
-        $results = [];
-
+        $this->results = [];
+        $promises = [];
         $this->inProgress = true;
 
-        foreach ($subtopics as $subtopic) {
+
+
+        // once we have all connections open
+        $this->connections()->then(function () use ($messages, &$promises)
+        {
+            $subtopics = $this->subtopics;
+
+            foreach ($subtopics as $subtopic) {
 
                 $topic = $this->config['notifications_topic'] . (is_null($subtopic) ? '' : '.' . $subtopic);
 
-                self::getSession()->call($this->callMethod, [$messages, $topic])
-                    ->then(
-                        function (CallResult $res) use ($subtopic, $subtopics, &$results)
-                        {
-                            $results[$subtopic] = ($res->__toString() === self::SUCCESS_RESPONSE);
+                foreach ($this->connections as $id => $connection) {
+                    $promises[] = $connection->getClient()->getSession()->call($this->callMethod, [$messages, $topic])
+                        ->then(
+                            function (CallResult $res) use ($subtopic, $subtopics) {
+                                $this->results[$subtopic] = ($res->__toString() === self::SUCCESS_RESPONSE);
 
-                            if(!$results[$subtopic])
-                            {
-                                Logger::error($this, $this->callMethod.' method call error: '. json_encode($res->getResultMessage()->getAdditionalMsgFields()) );
+                                if (!$this->results[$subtopic]) {
+                                    Logger::error($this, $this->callMethod . ' method call error: ' . json_encode($res->getResultMessage()->getAdditionalMsgFields()));
+                                }
+
+                                $this->handleResponse($res);
+                                return $res;
+
                             }
+                            , function (ErrorMessage $error) use ($subtopic, $subtopics, &$results) {
 
-                            if(count($results) >= count($subtopics) )
-                            {
-                                $this->inProgress = false;
-                             //   $this->connection()->close();
-                            }
-
-                        }
-                        , function (ErrorMessage $error) use ($subtopic, $subtopics, &$results)
-                    {
-
-                        $results[$subtopic] = false;
-                        Logger::error($this, $this->callMethod.' method call invalid response: '. json_encode($error->getAdditionalMsgFields()) );
-
-                        if(count($results) >= count($subtopics) )
-                        {
-                            $this->inProgress = false;
-
-                            // $this->connection()->close();
-                        }
-                    });
-
+                            $this->results[$subtopic] = false;
+                            $this->handleErrorResponse($error);
+                            return $error;
+                        });
+                }
             }
-        $this->result = $results;
 
-        //check for failure
-        return !self::resultsHasFailure($results);
+
+        });
+
+
+        $thePromise = \React\Promise\all($promises);
+
+        return $this->handleResultPromise($thePromise);
     }
 
     public function notifyAccountId($accountIds, $messages, $realm = null) : bool {
@@ -165,43 +257,35 @@ class Client
         !is_array($messages) && $messages = [$messages];
 
         $this->callMethod = $this->config['notifications_topic'] . '.notifyAccountId';
+        $this->inProgress = true;
 
-        $results = [];
+        $this->results = [];
 
         foreach ($accountIds as $accountId) {
-                self::getSession()->call($this->callMethod, [$accountId, $messages])
+            foreach ($this->connections as $id => $connection) {
+
+                $connection->getClient()->getSession()->call($this->callMethod, [$accountId, $messages])
                     ->then(
-                        function (CallResult $res) use ($accountIds, $accountId, &$results)
-                        {
-                            $results[$accountId] = ($res->__toString() === self::SUCCESS_RESPONSE);
+                        function (CallResult $res) use ($accountIds, $accountId, &$results) {
+                            $this->results[$accountId] = ($res->__toString() === self::SUCCESS_RESPONSE);
 
-                            if(!$results[$accountId])
-                            {
-                                Logger::error($this, $this->callMethod.' method call error: '. json_encode($res->getResultMessage()->getAdditionalMsgFields()) );
+                            if (!$this->results[$accountId]) {
+                                Logger::error($this, $this->callMethod . ' method call error: ' . json_encode($res->getResultMessage()->getAdditionalMsgFields()));
                             }
 
-                            if(count($results) >= count($accountIds) )
-                            {
-                                $this->inProgress = false;
-                                //$this->connection()->close();
-                            }
+                            $this->handleResponse($res);
+
 
                         }
-                        , function (ErrorMessage $error) use ($accountId, $accountIds, &$results)
-                        {
+                        , function (ErrorMessage $error) use ($accountId, $accountIds, &$results) {
 
-                            $results[$accountId] = false;
-                            Logger::error($this, $this->callMethod.' method call invalid response: '. json_encode($error->getAdditionalMsgFields()) );
+                            $this->results[$accountId] = false;
 
-                            if(count($results) >= count($accountIds) )
-                            {
-                                $this->inProgress = false;
-                                //$this->connection()->close();
-                            }
-                   });
+                            $this->handleErrorResponse($error);
+                    });
 
             }
-
+        }
         $this->result = $results;
 
         //check for failure
@@ -226,16 +310,24 @@ class Client
         {
             Logger::error($this, $this->callMethod.' method call error: '. json_encode($res->getResultMessage()->getAdditionalMsgFields()) );
         }
+        $connCount = count($this->connections);
 
-        $this->connection()->close();
+        if (count($this->results)*$connCount >= count($this->subtopics)*$connCount) {
+        //    $this->inProgress = false;
+        }
+
+      //  $this->connection()->close();
     }
 
     public function handleErrorResponse(ErrorMessage $error) {
 
-        $this->result = $error;
+        Logger::error($this, $this->callMethod . ' method call invalid response: ' . json_encode($error->getAdditionalMsgFields()));
 
-        Logger::error($this, $this->callMethod.' method call invalid response: '. json_encode($error->getAdditionalMsgFields()) );
-        $this->connection()->close();
+        $connCount = count($this->connections);
+
+        if (count($this->results)*$connCount >= count($this->subtopics)*$connCount) {
+           // $this->inProgress = false;
+        }
     }
 
     protected function callMethod($methodName, $args) {
@@ -263,6 +355,25 @@ class Client
     public function getResult()
     {
         return $this->result;
+    }
+
+    private function handleResultPromise(\React\Promise\Promise $thePromise)
+    {
+        $thePromise = $thePromise.then(function (){
+                var_dump(__METHOD__, 'success on all  connections');
+
+                $this->inProgress = false;
+            }, function (){
+                $this->inProgress = false;
+                var_dump(__METHOD__, 'fail on one of  connections');
+
+            },
+                function (){
+                    var_dump(__METHOD__, 'in progress on connections');
+                    $this->inProgress = true;
+                });
+
+        return $thePromise;
     }
 
 }

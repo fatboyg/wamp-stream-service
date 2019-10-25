@@ -22,18 +22,15 @@ class Worker extends \Illuminate\Queue\Worker
 
         $client = app(Client::class);
 
-
-        $client->connection()->on('open', function(ClientSession $session) use ($connectionName, $queue, $options, &$client)
+        $client->connections()->then(function () use ($connectionName, $queue, $options, &$client)
         {
 
             $loop = $client
-                ->connection()
-                ->getClient()
-                ->getLoop();
+                ->getEventLoop();
 
             $perTimeUnit = 0.0001; // asap
-            $loop
-                ->addPeriodicTimer($perTimeUnit,
+
+            $loop->addPeriodicTimer($perTimeUnit,
                     function ($timer) use ($connectionName, $queue, $options, $loop, $client) {
 
                         $jobs = 0;
@@ -107,7 +104,7 @@ class Worker extends \Illuminate\Queue\Worker
                             $this->sleep($options->sleep);
                             $this->needSleep = false;
                         }
-            });
+                    });
 
 
             $this->lastRestart = $this->getTimestampOfLastQueueRestart();
