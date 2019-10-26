@@ -112,7 +112,11 @@ class Worker extends \Illuminate\Queue\Worker
         });
 
         // will hang till above promise is resolved
-        $client->connection()->open();
+     //   $client->connection()->open();
+        $client
+            ->getEventLoop()
+        ->run();
+
 
     }
 
